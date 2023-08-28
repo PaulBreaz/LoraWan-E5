@@ -1,0 +1,115 @@
+## LoRa-E5 Module Python Library
+
+import json
+import asyncio, serial_asyncio
+
+from time import sleep
+
+f = open('loraModuleConfig.json')
+conf = json.load(f)
+f.close
+
+address = '/dev/ttyAMA0'
+
+class IOProtocol(asyncio.Protocol):
+
+	def __init__(self):
+		self.readBuffer = ""
+
+	def connection_made(self, transport):
+		self.transport = transport
+		print("[INFO] Opened port:",transport)
+		transport.serial.rts = False
+
+	def data_received(self,data):
+		decData = data.decode("ascii")
+		self.readBuffer += decData
+
+	def connection_lost(self,exc):
+		print("[CRITICAL] Connection with port lost")
+		self.transport.loop.stop()
+
+	def pause_reading(self):
+		print("[INFO] Reading paused")
+		self.transport.pause_reading()
+
+	def resume_reading(self):
+		self.transport.resume_reading()
+
+	def pause_writing(self):
+		print("[INFO] Writing paused\n[INFO] Current buffer size: " + self.transport.get_write_buffer_size())
+
+	def resume_writing(self):
+		print("[INFO] Resuming writing\n[INFO] Current buffer size: " + self.transport.get_write_buffer_size())
+
+	def begin_writing(self,transport,message):
+		print("[TX]",message.decode('ascii'))
+		transport.write(message)
+
+async def command(c,transport,protocol,timeout=1):
+	remTime = timeout
+	protocol.begin_writing(transport,bytes(c,'ascii'))
+
+	while remTime >= 0:
+		await asyncio.sleep(0.05)
+		protocol.resume_reading()
+		remTime -= 0.05
+
+	print(protocol.readBuffer.replace("\r\n","\r\n[RX]\t")[:-5])
+	protocol.readBuffer = ""
+
+async def client():
+	transport, protocol = await serial_asyncio.create_serial_connection(loop, IOProtocol, address, baudrate=115200)
+
+	msg = "AT+CMSGHEX="
+	for i in range(0,51*2):
+		msg += 'f'
+
+#	await moduleSetup(transport,protocol)
+#	await command('AT+CMSGHEX={}'.format(msg),transport,protocol,timeout=18)
+	await command("AT+JOIN",transport,protocol,timeout=10)
+	await command(msg,transport,protocol,timeout=18)
+
+	print("[INFO] Closing client")
+
+async def moduleSetup(transport,protocol):
+
+	## Version check (tests proper AT command operation)
+	await command("AT+VER",transport,protocol)
+
+	## Enable logs
+	#command("AT+LOG=DEBUG")
+
+	## Keys setup
+	await command("AT+KEY=APPKEY, \"" + conf["activation"]["otaa"]["appKey"] + "\"",transport,protocol)
+	await command("AT+ID=DevAddr, \"" + conf["activation"]["abp"]["devAddr"] + "\"",transport,protocol)
+	await command("AT+KEY=APPSKEY, \"" + conf["activation"]["abp"]["appsKey"] + "\"",transport,protocol)
+	await command("AT+KEY=NWKSKEY, \"" + conf["activation"]["abp"]["ntwksKey"] + "\"",transport,protocol)
+
+	## Port configuration
+	await command("AT+PORT=" + str(conf["txParameters"]["ports"]["uplink"]),transport,protocol)
+
+	## Data rate setup
+	await command("AT+ADR=" + conf["txParameters"]["datarate"]["adr"],transport,protocol)
+	await command("AT+DR=" + conf["txParameters"]["datarate"]["scheme"],transport,protocol)
+
+	## Channel setup
+	await command("AT+CH=NUM, " + conf["txParameters"]["channels"],transport,protocol)
+
+	## Power set
+	await command("AT+POWER=" + str(conf["txParameters"]["power"]),transport,protocol)
+
+	## Miscellaneous commands go here:
+#	command("AT+")
+
+	## Set mode (OTAA/ABP)
+	await command("AT+MODE=" + conf["txParameters"]["mode"],transport,protocol)
+	await command("AT+CLASS=" + conf["txParameters"]["class"],transport,protocol)
+	await command("AT+DELAY=RX1, 1000",transport,protocol)
+
+	await command("AT+VDD",transport,protocol)
+	await command("AT+TEMP",transport,protocol)
+
+loop = asyncio.get_event_loop()
+loop.run_until_complete(client())
+loop.close()
