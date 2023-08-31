@@ -1,0 +1,27 @@
+{
+	"activation":{
+		"otaa":{
+			"appKey":"612F3FBFBDC9605CC7CC88860858D190"
+		},
+		"abp":{
+			"devAddr":"0153D2AC",
+			"ntwksKey":"86E76F5FC2B3DDA03030CA970D6F3733",
+			"appsKey":"0D49F94110B43ECCFA912A0AAFC8EC41"
+		}
+	},
+	"txParameters":{
+		"ports":{
+			"downlink":1,
+			"uplink":2
+		},
+		"datarate":{
+			"adr":"ON",
+			"scheme":"EU868"
+		},
+		"channels":"0-2",
+		"power":14,
+		"mode":"LWOTAA",
+		"class":"A"
+	},
+ "devEUI":"f19bd2887e1f915f",
+}
